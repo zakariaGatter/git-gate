@@ -63,7 +63,7 @@
 * [X] Select one or Multi Repo to Clone 
 * [X] Use Dmenu to select 
 * [X] Send Notification when a repo Cloned
-* [] View Repos List 
+* [ ] View Repos List 
 
 
 [Git-gate]:https://gitlab.com/zakariagatter/git-gate
