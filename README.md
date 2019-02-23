@@ -8,17 +8,19 @@
 * Clone All User github Repos to special Directory 
 * Select One or multi Repo to Clone 
 * use dmenu to select 
+* List all user Repos
 
 [Git-gate] automatically ...
 
 * Check for The User Exist 
-* If the network is running 
+* Check If the network is running 
 * Check for the output Directory
 * Send a Notification when Repo Cloned 
 
 ## Screenshot
 ![Git-gate-all](./pics/all.png)
 ![Git-gate-select](./pics/select.png)
+![Git-gate-list](./pics/list.png)
 
 ## Quick start 
 
@@ -27,7 +29,8 @@
     Installation requires:
 
 	* __Git__   : Clone github Repos 
-	* __Curl__  : get all User Repos from github.com
+	* __Curl__  : Get all User Repos from github.com
+	* __Dmenu__ : Select Repos with -d flag
 
 
 2. Set up [Git.gate]:
@@ -50,6 +53,7 @@
         -a | --all	    : Download all User Repos
         -s | --select	    : Select one or multi Repo to Download
         -d | --dmenu	    : Select one Repo with dmenu
+	-l | --list	    : Show Repos List
         -h | --help	    : Display This Message
 
     NOTE :
@@ -63,7 +67,8 @@
 * [X] Select one or Multi Repo to Clone 
 * [X] Use Dmenu to select 
 * [X] Send Notification when a repo Cloned
-* [ ] View Repos List 
+* [X] View Repos List 
+* [ ] Update Git Repos 
 
 
 [Git-gate]:https://gitlab.com/zakariagatter/git-gate
