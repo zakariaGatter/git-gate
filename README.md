@@ -26,7 +26,7 @@
 
 ## Quick start 
 
-1. Installation:
+1. Requires :
     
     Installation requires:
 
@@ -36,7 +36,7 @@
 	* __Zip__   : Backup option
 
 
-2. Set up [Git.gate]:
+2. Set up [Git-gate]:
 
     ```bash 
 	git clone https://gitlab.com/zakariagatter/git-gate.git ~/git-gate
