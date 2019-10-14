@@ -1,0 +1,291 @@
+#!/bin/bash
+
+#-----------#
+# TMP FILES #
+#-----------#{{{
+_tmp_(){
+_tmp_source_="/tmp/gg_s$1"
+_tmp_list_="/tmp/gg_l$1"
+
+[ -f "$_tmp_source_" ] || \touch "$_tmp_source_"
+[ -f "$_tmp_list_" ] || \touch "$_tmp_list_"
+}
+#}}}
+
+#-------------------#
+# CHECK FOR GIT DIR #
+#-------------------#{{{
+_check_dir_(){
+
+GIT_GATE="${1:-$HOME/Git-gate}"
+
+[ -d "$GIT_GATE" ] || \mkdir -p "$GIT_GATE"
+}
+#}}}
+
+#--------------#
+# HELP DIALOG  #
+#--------------#
+_help_dialog_(){ #{{{
+echo -e "
+GIT-GATE (0.2)
+Writing by Zakaria GATTER (gitlab.com/zakariagatter)
+
+SYNTAX :
+	git-gate [OPTS] USERNAME
+
+OPTS :
+	-a | --all      : Download all User Repos
+	-s | --select   : Select one or multi Repo to Download using dialog
+	-o | --only-one : Git clone one Repo
+	-l | --list     : Show Repos List
+	-u | --update   : Update All Git repos in Giving DIRECTORY
+	-n | --name     : change repo Name
+	-h | --help     : Display This Message
+
+NOTE :
+	- if leave DIRECTORY empty in [-a|-s|-o] git-gate will take \$HOME/Git-gate as default directory
+
+"
+} #}}}
+
+#-------------------------#
+# DOWNLOAD WEBSITE SOURCE #
+#-------------------------#{{{
+_source_download_(){
+local _user_ _npage_
+
+# get Username
+_user_=${1}
+_tmp_ "$_user_"
+
+# simple waiting msg
+echo -en "[@] - $_user_ Downloading Source ... \r"
+# download Website Source
+if \curl -s "https://github.com/${_user_}?tab=repositories" -o "$_tmp_source_" &> /dev/null ; then
+    # if the user not exist
+    [ "$(<"$_tmp_source_")" = "Not Found" ] && {
+	echo -e "[X] - $_user_ Not Found, Uncorrect User Name"
+	exit 1
+
+	# remove tmp files
+	\rm $_tmp_list_ $_tmp_source_
+    }
+
+    # get list of repos
+    \awk -F '"' '/name codeRepository/{sub("/",""); print $2}' "$_tmp_source_" >  "$_tmp_list_"
+
+    # check if there is other repo pages
+    _npage_=$(awk -F '"' '/Next<\/a>/{print $14}' "$_tmp_source_")
+
+    # make a loop if there is more then one page of User repos
+    while [ "$_npage_" ] ; do
+	# Download the next page source
+        \curl -s "$_npage_" -o "$_tmp_source_"
+
+	# check if there is any other pages
+        _npage_=$(awk -F '"' '/Next<\/a>/{print $14}' "$_tmp_source_")
+
+	# add the new repos to repo list
+        \awk -F '"' '/name codeRepository/{sub("/",""); print $2}' "$_tmp_source_" >>  "$_tmp_list_"
+    done
+
+    # finish msg
+    echo -e "[+] - $_user_ Source Dowloaded Sucssesfully"
+else
+    echo -e "[X] - $_user_ UNKNOWN Problem, please check you connection"
+    exit 1
+
+    # remove tmp files
+    \rm $_tmp_list_ $_tmp_source_
+fi
+}
+#}}}
+
+#-------------------#
+# SIMPLE GIT CLONE  #
+#-------------------#{{{
+_git_clone_(){
+local _repo_
+
+# get repo name
+_repo_=${_NAME_:-${1##*/}}
+
+# simple wait msg
+echo -en "[?] - $_repo_ Is Cloning ...\r"
+
+if [ -d "${GIT_GATE}/${_repo_}" ] ; then
+    echo -e "[!] - $_repo_ This Repo Already Exist"
+else
+    if (git clone --depth=1 --recursive https://github.com/${1} ${GIT_GATE}/$_repo_ &> /dev/null); then
+		echo -e "[+] - $_repo_ Cloned Sucssesfully "
+    else
+		echo -e "[X] - $_repo_ UNKNOWN Problem, please check you connection"
+		exit 1
+    fi
+fi
+}
+#}}}
+
+#-----------------------------#
+# GIT PULL (UPDATE) All REPOS #
+#-----------------------------#{{{
+_pull_all_(){
+local i _repo_
+
+for i in $GIT_GATE/* ; do
+
+    # get repo name
+    _repo_=${i##*/}
+
+    # simple wait msg
+    echo -en "[?] - $_repo_ Is Updating ... \r"
+
+    # change to repo
+    \cd $i
+
+    # check if the dir is a git repo
+    if (git status &> /dev/null); then
+	if (git pull &> /dev/null); then
+	    echo -e "[^] - $_repo_ Updated Sucssesfully"
+	else
+	    echo -e "[X] - $_repo_ UNKNOWN Problem, please check you connection"
+	    exit 1
+	fi
+    else
+	echo -e "[X] - $_repo_ Is not a Git Repo"
+    fi
+
+    # go back where u came from
+    \cd "$OLDPWD"
+done
+}
+#}}}
+
+#--------------------------#
+# GIT CLONE ALL REPOS LIST #
+#--------------------------#{{{
+_clone_all_(){
+local L
+
+while read -r L ;do
+    _git_clone_ "$L"
+done < "$_tmp_list_"
+}
+#}}}
+
+#----------------#
+# LIST OF REPOS  #
+#----------------#{{{
+_repo_list_(){
+local L
+
+while read -r L ; do
+    echo -e "[-] : $L"
+done < "$_tmp_list_"
+}
+#}}}
+
+#---------------------#
+# CLONE ONLY ONE REPO #
+#---------------------#{{{
+_only_one_(){
+    _git_clone_ "$1"
+}
+#}}}
+
+#--------------------------#
+# SLECT OPTION WITH DIALOG #
+#--------------------------#{{{
+_select_(){
+# get Termnal line and columns
+read LINES COLUMNS < <(stty size)
+
+# add list to a option
+while read -r L ; do
+    _list_+="$L - OFF "
+done < "$_tmp_list_"
+
+# create slect menu with dialog
+_repos_=$(dialog --title "Git Gate" \
+    --checklist "Pick a Git Repositories (Accept Multiples)" \
+    $LINES $COLUMNS $(($LINES - 8)) \
+    ${_list_} 3>&1 1>&2 2>&3)
+
+#check for if select is empty
+[ -z "${_list_}" ] && return
+
+# clone all selected repos
+for i in ${_repos_[@]} ; do
+    _git_clone_ "$i"
+done
+}
+#}}}
+
+#---------------#
+# MAIN FUNCTION #
+#---------------#{{{
+_main_(){
+# check for Multi action errors
+(( ${#@} > 3 )) && {
+    echo -e "[X] - Git-Gate Can't accept more then one option at the time "
+    exit 1
+}
+
+while [ $1 ]; do
+	case "$1" in
+		-a|--all )
+			shift
+			_USER_="$1"
+			_DIR_="$2"
+			_check_dir_ "$_DIR_"
+			_source_download_ "$_USER_"
+			_clone_all_
+		;;
+		-o|--only-one )
+			shift
+			_USER_="$1"
+			_DIR_="$2"
+			_check_dir_ "$_DIR_"
+			_only_one_ "$_USER_"
+		;;
+		-u|--update )
+			shift
+			_DIR_="$1"
+			_pull_all_ "$_DIR_"
+		;;
+		-l|--list )
+			shift
+			_USER_="$1"
+			_source_download_ "$_USER_"
+			_repo_list_
+		;;
+		-s|--select )
+			shift
+			_USER_="$1"
+			_DIR_="$2"
+			_check_dir_ "$_DIR_"
+			_source_download_ "$_USER_"
+			_select_
+		;;
+		-n|--name )
+			shift
+			_NAME_="$1"
+		;;
+		-h|--help )
+			_help_dialog_
+		;;
+		* )
+		echo -e "[X] - $1 None Exist Option, please see help for more information"
+		exit 1
+		;;
+	esac
+
+	shift
+done
+}
+#}}}
+
+#-------------#
+_main_ "$@"
+#-------------#
