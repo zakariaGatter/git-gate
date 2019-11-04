@@ -16,10 +16,8 @@ _tmp_list_="/tmp/gg_l$1"
 # CHECK FOR GIT DIR #
 #-------------------#{{{
 _check_dir_(){
-
-GIT_GATE="${1:-$HOME/Git-gate}"
-
-[ -d "$GIT_GATE" ] || \mkdir -p "$GIT_GATE"
+    GIT_GATE="${1:-$HOME/Git-gate}"
+    [ -d "$GIT_GATE" ] || \mkdir -p "$GIT_GATE"
 }
 #}}}
 
@@ -29,7 +27,6 @@ GIT_GATE="${1:-$HOME/Git-gate}"
 _help_dialog_(){ #{{{
 echo -e "
 GIT-GATE (0.2)
-Writing by Zakaria GATTER (gitlab.com/zakariagatter)
 
 SYNTAX :
 	git-gate [OPTS] USERNAME
@@ -53,10 +50,8 @@ NOTE :
 # DOWNLOAD WEBSITE SOURCE #
 #-------------------------#{{{
 _source_download_(){
-local _user_ _npage_
-
 # get Username
-_user_=${1}
+local _user_=${1}
 _tmp_ "$_user_"
 
 # simple waiting msg
@@ -76,17 +71,17 @@ if \curl -s "https://github.com/${_user_}?tab=repositories" -o "$_tmp_source_" &
     \awk -F '"' '/name codeRepository/{sub("/",""); print $2}' "$_tmp_source_" >  "$_tmp_list_"
 
     # check if there is other repo pages
-    _npage_=$(awk -F '"' '/Next<\/a>/{print $14}' "$_tmp_source_")
+    local _npage_=$(awk -F '"' '/Next<\/a>/{print $14}' "$_tmp_source_")
 
     # make a loop if there is more then one page of User repos
     while [ "$_npage_" ] ; do
-	# Download the next page source
+        # Download the next page source
         \curl -s "$_npage_" -o "$_tmp_source_"
 
-	# check if there is any other pages
+        # check if there is any other pages
         _npage_=$(awk -F '"' '/Next<\/a>/{print $14}' "$_tmp_source_")
 
-	# add the new repos to repo list
+        # add the new repos to repo list
         \awk -F '"' '/name codeRepository/{sub("/",""); print $2}' "$_tmp_source_" >>  "$_tmp_list_"
     done
 
@@ -106,10 +101,8 @@ fi
 # SIMPLE GIT CLONE  #
 #-------------------#{{{
 _git_clone_(){
-local _repo_
-
 # get repo name
-_repo_=${_NAME_:-${1##*/}}
+local _repo_=${_NAME_:-${1##*/}}
 
 # simple wait msg
 echo -en "[?] - $_repo_ Is Cloning ...\r"
@@ -131,18 +124,16 @@ fi
 # GIT PULL (UPDATE) All REPOS #
 #-----------------------------#{{{
 _pull_all_(){
-local i _repo_
-
 for i in $GIT_GATE/* ; do
 
     # get repo name
-    _repo_=${i##*/}
+    local _repo_=${i##*/}
 
     # simple wait msg
     echo -en "[?] - $_repo_ Is Updating ... \r"
 
     # change to repo
-    \cd $i
+    \cd -- $i
 
     # check if the dir is a git repo
     if (git status &> /dev/null); then
@@ -157,7 +148,7 @@ for i in $GIT_GATE/* ; do
     fi
 
     # go back where u came from
-    \cd "$OLDPWD"
+    \cd -- "$OLDPWD"
 done
 }
 #}}}
@@ -166,8 +157,6 @@ done
 # GIT CLONE ALL REPOS LIST #
 #--------------------------#{{{
 _clone_all_(){
-local L
-
 while read -r L ;do
     _git_clone_ "$L"
 done < "$_tmp_list_"
@@ -178,8 +167,6 @@ done < "$_tmp_list_"
 # LIST OF REPOS  #
 #----------------#{{{
 _repo_list_(){
-local L
-
 while read -r L ; do
     echo -e "[-] : $L"
 done < "$_tmp_list_"
@@ -199,7 +186,7 @@ _only_one_(){
 #--------------------------#{{{
 _select_(){
 # get Termnal line and columns
-read LINES COLUMNS < <(stty size)
+read LINES COLUMNS < <(\stty size)
 
 # add list to a option
 while read -r L ; do
@@ -207,13 +194,11 @@ while read -r L ; do
 done < "$_tmp_list_"
 
 # create slect menu with dialog
-_repos_=$(dialog --title "Git Gate" \
-    --checklist "Pick a Git Repositories (Accept Multiples)" \
-    $LINES $COLUMNS $(($LINES - 8)) \
-    ${_list_} 3>&1 1>&2 2>&3)
+DIALOG_TTY=1
+_repos_=$(dialog --title "Git Gate" --checklist "Pick a Git Repositories (Accept Multiples)" $LINES $COLUMNS $(($LINES - 8)) ${_list_})
 
 #check for if select is empty
-[ -z "${_list_}" ] && return
+[ "${_list_}" ] || return
 
 # clone all selected repos
 for i in ${_repos_[@]} ; do
