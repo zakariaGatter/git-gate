@@ -1,0 +1,147 @@
+#!/usr/bin/env bash
+
+#-------#
+# DEBUG #
+#-------#
+#set -x
+
+#-------------#
+# SCRIPT NAME #
+#-------------#
+_name_=${0##*/}
+_SOURCE_="/tmp/${_name_}_source.XXX"
+_LIST_="/tmp/${_name_}_list.XXX"
+
+#-----------#
+# ERROR MSG #
+#-----------#
+_error_(){
+    printf "%s: %s \n%s\n" "${_name_^}" "$1" "$2"
+    exit 1
+}
+
+#-------------------------#
+# CREATE TARGET DIRECTORY #
+#-------------------------#
+_dir_(){
+local _target_dir_=${GGG_TARGET_DIR}
+
+[ -d "$_target_dir_" ] || mkdir -p "$_target_dir_"
+}
+
+#------------------------------#
+# DOWNLOAD GITHUB SOURCE PAGE  #
+#------------------------------#
+_source_(){
+local _user_=${_USER_}
+
+printf "Download $_user_ github Source file ...\r"
+
+if (curl -s "https://github.com/${_user_}?tab=repositories" -o "$_SOURCE_" 2> /dev/null) ; then
+    [ "$(< "$_SOURCE_")" ] || _error_ "" ""
+
+    awk -F '"' '/name codeRepository/{sub("/",""); print $2}' "$_SOURCE_" >  "$_LIST_"
+
+    local _NEXT_=$(awk -F '"' '/Next<\/a>/{print $14}' "$_SOURCE_")
+
+    while [ "$_NEXT_" ] ; do
+        curl -s "$_NEXT_" -o "$_SOURCE_" 2> /dev/null
+        awk -F '"' '/name codeRepository/{sub("/",""); print $2}' "$_SOURCE_" >>  "$_LIST_"
+        _NEXT_=$(awk -F '"' '/Next<\/a>/{print $14}' "$_SOURCE_")
+    done
+    printf "%*s" $COLUMNS
+else
+    _error_ "" ""
+fi
+}
+
+#-------------#
+# HELP DIALOG #
+#-------------#
+_help_(){
+cat <<- HELP
+${_name_^^}: Git clone on the next level
+Usage: ${_name_} [OPTIONS] ...
+
+OPTIONS
+ -d <DIR>       Clone Target Directory
+ -l <USER>      List User Repositories
+ -s <USER>      Select Cloned Repositories
+ -a <USER>      Clone All User Repositories
+ -o <USER/REPO> Clone Only One Repository
+ -b <BRANCH>    Branch To Clone Form
+ -p <DIR>       Pull All Git Repositories In Giving Directory
+ -n <NAME>      Change Cloned Repository Name
+ -h             Show This Help Dialog And Exit
+
+VARIABLES
+ GGG_TARGET_DIR
+ GGG_CLONE_CMD
+ GGG_PULL_CMD
+HELP
+}
+
+#---------------#
+# MAIN FUNCTION #
+#---------------#
+_main_(){
+while getopts ":d:l:s:a:o:b:p:n:h" OPT ; do
+    case "$OPT" in
+        d )
+            _DIR_="$OPTARG"
+            ;;
+        l )
+            _LIST_=true
+            _USER_="$OPTARG"
+            ;;
+        s )
+            _SELECT_=true
+            _USER_="$OPTARG"
+            ;;
+        a )
+            _ALL_=true
+            _USER_="$OPTARG"
+            ;;
+        o )
+            _ONE_=true
+            _REPO_="$OPTARG"
+            ;;
+        b )
+            _BRANCH_="$OPTARG"
+            ;;
+        p )
+            _PULL_="$OPTARG"
+            ;;
+        n )
+            _NAME_="$OPTARG"
+            ;;
+        h )
+            _HELP_=true
+            ;;
+        : )
+            _error_ "fatal: option requires an argument -- '${OPTARG}'" "Try '${_name_} -h' for more information."
+            ;;
+        * )
+            _error_ "unknown option: -${OPTARG}" "Try: '${_name_} -h' for more information"
+            ;;
+    esac
+done
+}
+
+#-------------------#
+# RUN MAIN FUNCTION #
+#-------------------#
+_main_ "$@"
+
+#---------------#
+# SET VARIABLES #
+#---------------#
+GGG_TARGET_DIR=${GGG_TARGET_DIR:-$_DIR_}
+GGG_CLONE_CMD=${GGG_CLONE_CMD:-git clone --depth=1 --recursive -b "${_BRANCH_:=master}"}
+GGG_PULL_CMD=${GGG_PULL_CMD:-git pull --depth=1 --recurse-submodules}
+
+#------------------#
+# RUN USER OPTIONS #
+#------------------#
+[ "$_HELP_" ]   && _help_ || true
+[ "$_DIR_" ]    && _dir_  || true
