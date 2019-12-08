@@ -1,0 +1,283 @@
+#!/usr/bin/env bash
+
+#-------#
+# DEBUG #
+#-------#
+#set -x
+
+#-------------#
+# SCRIPT NAME #
+#-------------#
+_name_=${0##*/}
+_CACHE_SOURCE_="/tmp/${_name_}_source.XXX"
+_CACHE_LIST_="/tmp/${_name_}_list.XXX"
+
+#-----------#
+# ERROR MSG #
+#-----------#
+_error_(){
+    printf "%s: %s \n%s\n" "${_name_^}" "$1" "$2"
+    exit 1
+}
+
+#-------------------------#
+# CREATE TARGET DIRECTORY #
+#-------------------------#
+_dir_(){
+local _target_dir_=${GG_TARGET_DIR}
+
+[ -d "$_target_dir_" ] || mkdir -p "$_target_dir_"
+}
+
+#------------------------------#
+# DOWNLOAD GITHUB SOURCE PAGE  #
+#------------------------------#
+_source_(){
+local _user_=${_USER_}
+
+printf "Download $_user_ github Source file ...\r"
+
+if (curl -s "https://github.com/${_user_}?tab=repositories" -o "$_CACHE_SOURCE_" 2> /dev/null) ; then
+    [ "$(< "$_CACHE_SOURCE_")" ] || _error_ "" ""
+
+    awk -F '"' '/name codeRepository/{sub("/",""); print $2}' "$_CACHE_SOURCE_" >  "$_CACHE_LIST_"
+
+    local _NEXT_=$(awk -F '"' '/Next<\/a>/{print $14}' "$_CACHE_SOURCE_")
+
+    while [ "$_NEXT_" ] ; do
+        curl -s "$_NEXT_" -o "$_CACHE_SOURCE_" 2> /dev/null
+        awk -F '"' '/name codeRepository/{sub("/",""); print $2}' "$_CACHE_SOURCE_" >>  "$_CACHE_LIST_"
+        _NEXT_=$(awk -F '"' '/Next<\/a>/{print $14}' "$_CACHE_SOURCE_")
+    done
+    printf "%*s\r" $COLUMNS
+else
+    _error_ "Cannot get Source Page" "Please check you network"
+fi
+}
+
+#------------#
+# GIT CLONE  #
+#------------#
+_clone_(){
+local _repo_=${1}
+local name=${_NAME_:-${_repo_##*/}}
+
+printf "%s\r" "Cloning '$_repo_' Repository ..."
+if [[ $_repo_ =~ git://* || $_repo_ =~ https://* || $_repo_ =~ http://* || $_repo_ =~ ssh://* || $_repo_ =~ git@*:*/*  ]]; then
+    if ($GG_CLONE_CMD "$_repo_" "$GG_TARGET_DIR/$name" &> /dev/null); then
+        printf "%*s\r" $COLUMNS
+        printf "%s" "$name: '$_repo_' Cloned Successfully"
+    else
+        _error_ "cannot Clone '$_repo_'" "Please check your connection"
+    fi
+else
+    if($GG_CLONE_CMD "https://github.com/$_repo_" "$GG_TARGET_DIR/$name" &> /dev/null); then
+        printf "%*s\r" $COLUMNS
+        printf "%s" "$name: '$_repo_' Cloned Successfully"
+    else
+        printf "%*s\r" $COLUMNS
+        _error_ "cannot Clone '$_repo_'" "Please check your connection"
+    fi
+fi
+}
+
+#------------------#
+# PULL UPDATE REPO #
+#------------------#
+_PULL_(){
+local _dir_=${1}
+local name=${_dir_##*/}
+
+printf "%s\r" "Pull '$name'Repository ..."
+if(git status &> /dev/null); then
+    cd -- "$_dir_"
+    if($GG_PULL_CMD);then
+        printf "%*s\r" $COLUMNS
+        printf "%s" "'$name' Cloned Successfully"
+    else
+        printf "%*s\r" $COLUMNS
+        _error_ "cannot Clone '$_repo_'" "Please check your connection"
+    fi
+    cd -- "$OLDPWD"
+else
+    printf "%*s\r" $COLUMNS
+    printf "Cannot Pull '$name'" "Not a Git Repository"
+fi
+}
+
+#------------#
+# LIST REPOS #
+#------------#
+_list_(){
+_source_
+
+local line
+while read -r line ; do
+    printf "- %s" "$line"
+done < "$_CACHE_LIST_"
+}
+
+#-------------#
+# SELECT REPO #
+#-------------#
+_select_(){
+_source_
+
+read lines columns < <(\stty size)
+
+while read -r l ; do
+    _list_+="$l - off "
+done < "$_CACHE_LIST_"
+
+dialog_tty=1
+_repos_=$(dialog --title "git gate" --checklist "pick a git repositories (accept multiples)" $lines $columns $(($lines - 8)) ${_list_})
+
+[ "${_list_}" ] || return
+
+for i in ${_repos_[@]} ; do
+    _clone_ "$i"
+done
+
+}
+
+#-----------#
+# CLONE ALL #
+#-----------#
+_all_(){
+_source_
+
+local line
+while read -r line; do
+    _clone_ "$line"
+done < "$_CACHE_LIST_"
+}
+
+#----------#
+# ONLY ONE #
+#----------#
+_one_(){
+_clone_ "$_REPO_"
+}
+
+#-------------#
+# PULL UPDATE #
+#-------------#
+_pull_(){
+local _dir_=${GG_TARGET_DIR}
+local im_here=$PWD
+
+cd -- "$_dir_"
+
+if (git status &> /dev/null); then
+    cd -- "$OLDPWD"
+    _PULL_ "$_dir_"
+else
+    for i in $_dir_/* ; do
+        _pull_ "$i"
+    done
+fi
+}
+
+#-------------#
+# HELP DIALOG #
+#-------------#
+_help_(){
+cat <<- HELP
+${_name_^^}: Git clone on the next level
+Usage: ${_name_} [OPTIONS] ...
+
+OPTIONS
+ -d <DIR>       Clone Target Directory
+ -l <USER>      List User Repositories
+ -s <USER>      Select Cloned Repositories
+ -a <USER>      Clone All User Repositories
+ -o <USER/REPO> Clone Only One Repository
+ -b <BRANCH>    Branch To Clone Form
+ -p <DIR>       Pull All Git Repositories In Giving Directory
+ -n <NAME>      Change Cloned Repository Name
+ -h             Show This Help Dialog And Exit
+
+VARIABLES
+ GG_TARGET_DIR
+ GG_CLONE_CMD
+ GG_PULL_CMD
+HELP
+}
+
+#---------------#
+# MAIN FUNCTION #
+#---------------#
+_main_(){
+while getopts ":d:l:s:a:o:b:p:n:h" OPT ; do
+    case "$OPT" in
+        d )
+            GG_TARGET_DIR="$OPTARG"
+            ;;
+        l )
+            _LIST_=true
+            _USER_="$OPTARG"
+            ((TASK++))
+            ;;
+        s )
+            _SELECT_=true
+            _USER_="$OPTARG"
+            ((TASK++))
+            ;;
+        a )
+            _ALL_=true
+            _USER_="$OPTARG"
+            ((TASK++))
+            ;;
+        o )
+            _ONE_=true
+            _REPO_="$OPTARG"
+            ((TASK++))
+            ;;
+        b )
+            _BRANCH_="$OPTARG"
+            ;;
+        p )
+            _PULL_="$OPTARG"
+            ((TASK++))
+            ;;
+        n )
+            _NAME_="$OPTARG"
+            ;;
+        h )
+            _HELP_=true
+            ((TASK++))
+            ;;
+        : )
+            _error_ "fatal: option requires an argument -- '${OPTARG}'" "Try '${_name_} -h' for more information."
+            ;;
+        * )
+            _error_ "unknown option: -${OPTARG}" "Try: '${_name_} -h' for more information"
+            ;;
+    esac
+done
+}
+
+#-------------------#
+# RUN MAIN FUNCTION #
+#-------------------#
+_main_ "$@"
+
+#---------------#
+# SET VARIABLES #
+#---------------#
+GG_TARGET_DIR=${GG_TARGET_DIR:-$HOME/git-gate}
+GG_CLONE_CMD=${GG_CLONE_CMD:-git clone --depth=1 --recursive -b "${_BRANCH_:=master}"}
+GG_PULL_CMD=${GG_PULL_CMD:-git pull --depth=1 --recurse-submodules}
+_dir_
+
+#------------------#
+# RUN USER OPTIONS #
+#------------------#
+[ "$1" ] || _help_
+(( $TASK > 1)) 2> /dev/null && _error_ "Confuse options:" "Not allow for multi operations"
+[ "$_HELP_" ]   && _help_   || true
+[ "$_LIST_" ]   && _list_   || true
+[ "$_SELECT_" ] && _select_ || true
+[ "$_ALL_" ]    && _all_    || true
+[ "$_ONE_" ]    && _one_    || true
+[ "$_PULL_" ]   && _pull_   || true
