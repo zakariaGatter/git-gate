@@ -15,19 +15,12 @@ _CACHE_LIST_="/tmp/${_name_}_list.XXX"
 #-----------#
 # ERROR MSG #
 #-----------#
-_error_(){
-    printf "%s: %s \n%s\n" "${_name_^}" "$1" "$2"
-    exit 1
-}
+die(){ printf "%s: %b \n" "${_name_^}" "$@" >&2 && exit 2 ;}
 
 #-------------------------#
 # CREATE TARGET DIRECTORY #
 #-------------------------#
-_dir_(){
-local _target_dir_=${GG_TARGET_DIR}
-
-[ -d "$_target_dir_" ] || mkdir -p "$_target_dir_"
-}
+[ -d "$GG_TARGET_DIR" ] || mkdir -p "$GG_TARGET_DIR"
 
 #------------------------------#
 # DOWNLOAD GITHUB SOURCE PAGE  #
@@ -38,7 +31,7 @@ local _user_=${_USER_}
 printf "Download $_user_ github Source file ...\r"
 
 if (curl -s "https://github.com/${_user_}?tab=repositories" -o "$_CACHE_SOURCE_" 2> /dev/null) ; then
-    [ "$(< "$_CACHE_SOURCE_")" ] || _error_ "" ""
+    [ "$(< "$_CACHE_SOURCE_")" ] || die "ERROR 404: No such User or Repository"
 
     awk -F '"' '/name codeRepository/{sub("/",""); print $2}' "$_CACHE_SOURCE_" >  "$_CACHE_LIST_"
 
@@ -51,7 +44,7 @@ if (curl -s "https://github.com/${_user_}?tab=repositories" -o "$_CACHE_SOURCE_"
     done
     printf "%*s\r" $COLUMNS
 else
-    _error_ "Cannot get Source Page" "Please check you network"
+    die "Cannot get Source Page \nPlease check you network"
 fi
 }
 
@@ -66,9 +59,9 @@ printf "%s\r" "Cloning '$_repo_' Repository ..."
 if [[ $_repo_ =~ git://* || $_repo_ =~ https://* || $_repo_ =~ http://* || $_repo_ =~ ssh://* || $_repo_ =~ git@*:*/*  ]]; then
     if ($GG_CLONE_CMD "$_repo_" "$GG_TARGET_DIR/$name" &> /dev/null); then
         printf "%*s\r" $COLUMNS
-        printf "%s" "$name: '$_repo_' Cloned Successfully"
+        printf "%s" "$name: '${_repo_##*/}' Cloned Successfully"
     else
-        _error_ "cannot Clone '$_repo_'" "Please check your connection"
+        die "cannot Clone '$_repo_' \nPlease check your connection"
     fi
 else
     if($GG_CLONE_CMD "https://github.com/$_repo_" "$GG_TARGET_DIR/$name" &> /dev/null); then
@@ -76,7 +69,7 @@ else
         printf "%s" "$name: '$_repo_' Cloned Successfully"
     else
         printf "%*s\r" $COLUMNS
-        _error_ "cannot Clone '$_repo_'" "Please check your connection"
+        die "cannot Clone '$_repo_' \nPlease check your connection"
     fi
 fi
 }
@@ -96,12 +89,12 @@ if(git status &> /dev/null); then
         printf "%s" "'$name' Cloned Successfully"
     else
         printf "%*s\r" $COLUMNS
-        _error_ "cannot Clone '$_repo_'" "Please check your connection"
+        die "cannot Clone '$_repo_'" "Please check your connection"
     fi
     cd -- "$OLDPWD"
 else
     printf "%*s\r" $COLUMNS
-    printf "Cannot Pull '$name'" "Not a Git Repository"
+    printf "Cannot Pull '$name' \nNot a Git Repository"
 fi
 }
 
@@ -113,7 +106,7 @@ _source_
 
 local line
 while read -r line ; do
-    printf "- %s" "$line"
+    printf " - %s\n" "$line"
 done < "$_CACHE_LIST_"
 }
 
@@ -126,13 +119,13 @@ _source_
 read lines columns < <(\stty size)
 
 while read -r l ; do
-    _list_+="$l - off "
+    _list_+=( "$l - off" )
 done < "$_CACHE_LIST_"
 
 dialog_tty=1
-_repos_=$(dialog --title "git gate" --checklist "pick a git repositories (accept multiples)" $lines $columns $(($lines - 8)) ${_list_})
+_repos_=$(dialog --title "git gate" --checklist "pick a git repositories (accept multiples)" $lines $columns $(($lines - 8)) ${_list_[@]})
 
-[ "${_list_}" ] || return
+[ "${_repos_}" ] || return
 
 for i in ${_repos_[@]} ; do
     _clone_ "$i"
@@ -182,7 +175,9 @@ fi
 # HELP DIALOG #
 #-------------#
 _help_(){
-cat <<- HELP
+while read ; do 
+    printf "%b\n" "$REPLY"
+done <<- HELP
 ${_name_^^}: Git clone on the next level
 Usage: ${_name_} [OPTIONS] ...
 
@@ -202,6 +197,8 @@ VARIABLES
  GG_CLONE_CMD
  GG_PULL_CMD
 HELP
+
+exit 0
 }
 
 #---------------#
@@ -248,10 +245,10 @@ while getopts ":d:l:s:a:o:b:p:n:h" OPT ; do
             ((TASK++))
             ;;
         : )
-            _error_ "fatal: option requires an argument -- '${OPTARG}'" "Try '${_name_} -h' for more information."
+            die "fatal: option requires an argument -- '${OPTARG}' \nTry '${_name_} -h' for more information."
             ;;
         * )
-            _error_ "unknown option: -${OPTARG}" "Try: '${_name_} -h' for more information"
+            die "unknown option: -${OPTARG} \nTry: '${_name_} -h' for more information"
             ;;
     esac
 done
@@ -265,16 +262,15 @@ _main_ "$@"
 #---------------#
 # SET VARIABLES #
 #---------------#
-GG_TARGET_DIR=${GG_TARGET_DIR:-$HOME/git-gate}
-GG_CLONE_CMD=${GG_CLONE_CMD:-git clone --depth=1 --recursive -b "${_BRANCH_:=master}"}
-GG_PULL_CMD=${GG_PULL_CMD:-git pull --depth=1 --recurse-submodules}
-_dir_
+[ "$GG_TARGET_DIR" ]    || GG_TARGET_DIR='$HOME/git-gate'
+[ "$GG_CLONE_CMD" ]     ||  GG_CLONE_CMD='git clone --depth=1 --recursive -b "${_BRANCH_:=master}"'
+[ "$GG_PULL_CMD" ]      ||   GG_PULL_CMD='git pull --depth=1 --recurse-submodules'
 
 #------------------#
 # RUN USER OPTIONS #
 #------------------#
 [ "$1" ] || _help_
-(( $TASK > 1)) 2> /dev/null && _error_ "Confuse options:" "Not allow for multi operations"
+(( $TASK > 1)) 2> /dev/null && die "Confuse options:" "Not allow for multi operations"
 [ "$_HELP_" ]   && _help_   || true
 [ "$_LIST_" ]   && _list_   || true
 [ "$_SELECT_" ] && _select_ || true
